@@ -1,11 +1,65 @@
 import math
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .activation import activation_layer
 
+from ..utils import SparseFeat, DenseFeat, create_embedding_matrix
+
+
+class EmbeddingAll(nn.Module):
+    def __init__(self, feature_columns, feature_index, init_std=1e-4, dense_emb_dim=8, max_norm=None, device='cpu', dtype=torch.float32):
+        super(EmbeddingAll, self).__init__()
+        self.feature_index = feature_index
+        self.device = device
+        self.dense_emb_dim = dense_emb_dim
+        self.sparse_feature_columns = list(
+            filter(lambda x: isinstance(x, SparseFeat), feature_columns)) if len(feature_columns) else []
+        self.dense_feature_columns = list(
+            filter(lambda x: isinstance(x, DenseFeat), feature_columns)) if len(feature_columns) else []
+
+        self.sparse_embedding_dict = create_embedding_matrix(feature_columns, init_std, max_norm=max_norm,
+                                                             sparse=False, device=device, dtype=dtype)
+        self.dense_embedding_dict = nn.ModuleDict()
+        for feat in self.dense_feature_columns:
+            tensor = nn.Embedding(1, dense_emb_dim, max_norm=max_norm, dtype=dtype)
+            nn.init.normal_(tensor.weight, mean=0, std=init_std)
+            self.dense_embedding_dict.add_module(feat.name, tensor)
+        self.dense_embedding_dict.to(self.device)
+        self.output_dim = np.sum([f.embedding_dim for f in self.sparse_feature_columns] + [len(self.dense_feature_columns)*dense_emb_dim])
+
+    def forward(self, X):
+        '''
+        input format: batch x [id_list || float_list]
+        :param X: torch.Tensor
+        :return: embedding stack, shape: batch x #feature x embedding_size
+        '''
+        #todo: norm embedding module==1
+        sparse_embedding_list = [self.sparse_embedding_dict[feat.embedding_name](
+            X[:, self.feature_index[feat.name][0]:self.feature_index[feat.name][1]].long()) for
+            feat in self.sparse_feature_columns]
+
+        dense_value_list = [X[:, self.feature_index[feat.name][0]].unsqueeze(1) for feat in
+                            self.dense_feature_columns]
+        dense_emb_list = [self.dense_embedding_dict[feat.name](torch.IntTensor([0])) for
+                            feat in self.dense_feature_columns]
+        sparse_value = torch.cat(sparse_embedding_list, dim=1)
+        dense_emb_value = torch.cat(dense_emb_list, dim=0).unsqueeze(0).repeat([2,1,1])
+        dense_value = torch.cat(dense_value_list, dim=1).unsqueeze(-1)
+        return torch.cat([sparse_value, dense_value*dense_emb_value], dim=1)
+
+
+class ShadowNN(nn.Module):
+    def __init__(self, input_dim, activate='relu', device='cpu', dtype=torch.float32):
+        super(ShadowNN, self).__init__()
+        self.model = nn.Linear(input_dim, 1, device=device, dtype=dtype)
+        nn.init.kaiming_normal_(self.model.weight, nonlinearity=activate)
+        self.activation = activation_layer(activate)
+
+    def forward(self, X):
+        return self.activation(self.model(X))
 
 class LocalActivationUnit(nn.Module):
     """The LocalActivationUnit used in DIN with which the representation of
@@ -90,7 +144,7 @@ class DNN(nn.Module):
     """
 
     def __init__(self, inputs_dim, hidden_units, activation='relu', l2_reg=0, dropout_rate=0, use_bn=False,
-                 init_std=0.0001, dice_dim=3, seed=1024, device='cpu'):
+                 dice_dim=3, seed=1024, device='cpu', dtype=torch.float32):
         super(DNN, self).__init__()
         self.dropout_rate = dropout_rate
         self.dropout = nn.Dropout(dropout_rate)
@@ -102,7 +156,7 @@ class DNN(nn.Module):
         hidden_units = [inputs_dim] + list(hidden_units)
 
         self.linears = nn.ModuleList(
-            [nn.Linear(hidden_units[i], hidden_units[i + 1]) for i in range(len(hidden_units) - 1)])
+            [nn.Linear(hidden_units[i], hidden_units[i + 1], dtype=dtype) for i in range(len(hidden_units) - 1)])
 
         if self.use_bn:
             self.bn = nn.ModuleList(
@@ -113,7 +167,7 @@ class DNN(nn.Module):
 
         for name, tensor in self.linears.named_parameters():
             if 'weight' in name:
-                nn.init.normal_(tensor, mean=0, std=init_std)
+                nn.init.kaiming_normal_(tensor, nonlinearity=activation)
 
         self.to(device)
 
@@ -137,7 +191,7 @@ class DNN(nn.Module):
 class PredictionLayer(nn.Module):
     """
       Arguments
-         - **task**: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+         - **task**: str, ``"binary"`` for  binary logloss or  ``"ltr"`` for learning to rank
          - **use_bias**: bool.Whether add bias term or not.
     """
 
@@ -157,6 +211,8 @@ class PredictionLayer(nn.Module):
             output += self.bias
         if self.task == "binary":
             output = torch.sigmoid(output)
+        elif self.task == 'ltr':
+            output = torch.relu(output)
         return output
 
 
@@ -183,3 +239,4 @@ class Conv2dSame(nn.Conv2d):
         out = F.conv2d(x, self.weight, self.bias, self.stride,
                        self.padding, self.dilation, self.groups)
         return out
+

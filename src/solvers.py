@@ -7,7 +7,7 @@ import pandas as pd
 import tqdm
 from torch.utils.data import DataLoader
 
-from graph_recsys_benchmark.utils import *
+from utils import *
 
 
 class BaseSolver(object):

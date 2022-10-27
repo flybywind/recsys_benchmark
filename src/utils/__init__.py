@@ -1,7 +1,15 @@
 from .general_utils import *
 from .rec_utils import *
-
+from .inputs import SparseFeat, DenseFeat, build_input_features
+from .inputs import get_dense_input, get_feature_names, create_embedding_matrix, embedding_lookup
 __all__ = [
+    'SparseFeat',
+    'DenseFeat',
+    'build_input_features',
+    'get_dense_input',
+    'get_feature_names',
+    'create_embedding_matrix',
+    'embedding_lookup',
     'get_folder_path',
     'get_opt_class',
     'hit',

@@ -11,7 +11,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from ..nn.sequence import SequencePoolingLayer
 from ..nn.utils import concat_fun
 
 DEFAULT_GROUP_NAME = "default_group"
@@ -20,6 +19,9 @@ DEFAULT_GROUP_NAME = "default_group"
 class SparseFeat(namedtuple('SparseFeat',
                             ['name', 'vocabulary_size', 'embedding_dim', 'use_hash', 'dtype', 'embedding_name',
                              'group_name'])):
+    '''
+    Sparse feature is used to define category features
+    '''
     __slots__ = ()
 
     def __new__(cls, name, vocabulary_size, embedding_dim=4, use_hash=False, dtype="int32", embedding_name=None,
@@ -138,24 +140,18 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
         raise NotImplementedError
 
 
-def get_varlen_pooling_list(embedding_dict, features, feature_index, varlen_sparse_feature_columns, device):
-    varlen_sparse_embedding_list = []
-    for feat in varlen_sparse_feature_columns:
-        seq_emb = embedding_dict[feat.name]
-        if feat.length_name is None:
-            seq_mask = features[:, feature_index[feat.name][0]:feature_index[feat.name][1]].long() != 0
-
-            emb = SequencePoolingLayer(mode=feat.combiner, supports_masking=True, device=device)(
-                [seq_emb, seq_mask])
-        else:
-            seq_length = features[:, feature_index[feat.length_name][0]:feature_index[feat.length_name][1]].long()
-            emb = SequencePoolingLayer(mode=feat.combiner, supports_masking=False, device=device)(
-                [seq_emb, seq_length])
-        varlen_sparse_embedding_list.append(emb)
-    return varlen_sparse_embedding_list
-
-
-def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, sparse=False, device='cpu'):
+def create_embedding_matrix(feature_columns, init_std=0.0001, sparse=False, emb_dim=0, max_norm=None, device='cpu', dtype=torch.float32):
+    '''
+    given feature_columns, select sparse/varlen features and create embeddings
+    :param feature_columns: list of feature(including, SparseFeat, DenseFeat)
+    :param init_std:
+    :param sparse:
+    :param emb_dim: if less than 0, use feature.embedding_dim,
+                  or use this value to overwrite the embedding_dim defined inside feature
+    :param device:
+    :param dtype:
+    :return: embedding diction
+    '''
     # Return nn.ModuleDict: for sparse features, {embedding_name: nn.Embedding}
     # for varlen sparse features, {embedding_name: nn.EmbeddingBag}
     sparse_feature_columns = list(
@@ -165,14 +161,11 @@ def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, spar
         filter(lambda x: isinstance(x, VarLenSparseFeat), feature_columns)) if len(feature_columns) else []
 
     embedding_dict = nn.ModuleDict(
-        {feat.embedding_name: nn.Embedding(feat.vocabulary_size, feat.embedding_dim if not linear else 1, sparse=sparse)
+        {feat.embedding_name: nn.Embedding(feat.vocabulary_size, feat.embedding_dim if emb_dim<1 else 1,
+                                           max_norm=max_norm, sparse=sparse, dtype=dtype)
          for feat in
          sparse_feature_columns + varlen_sparse_feature_columns}
     )
-
-    # for feat in varlen_sparse_feature_columns:
-    #     embedding_dict[feat.embedding_name] = nn.EmbeddingBag(
-    #         feat.dimension, embedding_size, sparse=sparse, mode=feat.combiner)
 
     for tensor in embedding_dict.values():
         nn.init.normal_(tensor.weight, mean=0, std=init_std)
