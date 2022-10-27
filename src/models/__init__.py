@@ -1,3 +1,4 @@
+from .afn import AFN
 from .peagcn import PEAGCNRecsysModel
 from .peagat import PEAGATRecsysModel
 from .peasage import PEASageRecsysModel
@@ -14,6 +15,7 @@ from .xdfm import XDFMRecsysModel
 from .multi_gccf import MultiGCCFRecsysModel
 
 __all__ = [
+    'AFN',
     'PEAGCNRecsysModel',
     'PEAGATRecsysModel',
     'PEASageRecsysModel',

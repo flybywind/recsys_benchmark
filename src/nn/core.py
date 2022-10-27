@@ -20,7 +20,7 @@ class EmbeddingAll(nn.Module):
         self.dense_feature_columns = list(
             filter(lambda x: isinstance(x, DenseFeat), feature_columns)) if len(feature_columns) else []
 
-        self.sparse_embedding_dict = create_embedding_matrix(feature_columns, init_std, max_norm=max_norm,
+        self.sparse_embedding_dict = create_embedding_matrix(feature_columns, init_std, emb_dim=dense_emb_dim, max_norm=max_norm,
                                                              sparse=False, device=device, dtype=dtype)
         self.dense_embedding_dict = nn.ModuleDict()
         for feat in self.dense_feature_columns:

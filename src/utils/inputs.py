@@ -161,7 +161,7 @@ def create_embedding_matrix(feature_columns, init_std=0.0001, sparse=False, emb_
         filter(lambda x: isinstance(x, VarLenSparseFeat), feature_columns)) if len(feature_columns) else []
 
     embedding_dict = nn.ModuleDict(
-        {feat.embedding_name: nn.Embedding(feat.vocabulary_size, feat.embedding_dim if emb_dim<1 else 1,
+        {feat.embedding_name: nn.Embedding(feat.vocabulary_size, emb_dim if emb_dim > 0 else feat.embedding_dim,
                                            max_norm=max_norm, sparse=sparse, dtype=dtype)
          for feat in
          sparse_feature_columns + varlen_sparse_feature_columns}

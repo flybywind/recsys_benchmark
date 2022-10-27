@@ -11,7 +11,7 @@ from src.utils import SparseFeat, DenseFeat
 
 class TestEmbeddingAll(unittest.TestCase):
     def test_embedding_forward(self):
-        feature_columns = [SparseFeat('s1', 10), SparseFeat('s2', 6), DenseFeat('d1'), DenseFeat('d2'), DenseFeat('d3')]
+        feature_columns = [SparseFeat('s1', 10, embedding_dim=10), SparseFeat('s2', 6), DenseFeat('d1'), DenseFeat('d2'), DenseFeat('d3')]
         feature_index = build_input_features(feature_columns)
         emb_layer = EmbeddingAll(feature_columns, feature_index, dense_emb_dim=4)
         X = torch.FloatTensor([[1, 2, 0.4, 0.6, 0.8], [9, 2, 0.3, 0.5, 0.7]])

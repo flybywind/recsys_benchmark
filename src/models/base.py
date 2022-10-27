@@ -32,7 +32,7 @@ class BaseRecsysModel(torch.nn.Module):
 
 
 class CtrDNNRecModel(nn.Module):
-    def __init__(self, feature_columns, dense_emb_dim=8, l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
+    def __init__(self, feature_columns, dense_emb_dim=8, max_norm=None, l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
                  init_std=0.0001, seed=1024, task='ltr', device='cpu', dtype=torch.float32, gpus=None):
 
         super(CtrDNNRecModel, self).__init__()
@@ -50,11 +50,11 @@ class CtrDNNRecModel(nn.Module):
 
         # Create embedding for DNN side, only create embedding for sparse features
         self.embedding_input = EmbeddingAll(feature_columns, self.feature_index, init_std, dense_emb_dim=dense_emb_dim,
-                                            dtype=dtype, device=device)
+                                            max_norm=max_norm, dtype=dtype, device=device)
 
         # Create embedding matrics and the weights for shallow linear side
         self.linear_model = ShadowNN(
-            feature_columns, self.feature_index, device=device)
+            self.embedding_size, self.feature_index, device=device)
 
         self.regularization_weight = []
 
@@ -452,15 +452,8 @@ class CtrDNNRecModel(nn.Module):
         return None
 
     @property
-    def embedding_size(self, ):
-        feature_columns = self.dnn_feature_columns
-        sparse_feature_columns = list(
-            filter(lambda x: isinstance(x, (SparseFeat, VarLenSparseFeat)), feature_columns)) if len(
-            feature_columns) else []
-        embedding_size_set = set([feat.embedding_dim for feat in sparse_feature_columns])
-        if len(embedding_size_set) > 1:
-            raise ValueError("embedding_dim of SparseFeat and VarlenSparseFeat must be same in this model!")
-        return list(embedding_size_set)[0]
+    def embedding_size(self):
+        return self.embedding_input.output_dim
 class GraphRecsysModel(torch.nn.Module):
     def __init__(self, **kwargs):
         super(GraphRecsysModel, self).__init__()

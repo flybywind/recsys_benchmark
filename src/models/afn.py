@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 
 from .base import CtrDNNRecModel
-from ..nn import LogTransformLayer, DNN, Linear
+from ..nn import LogTransformLayer, DNN
 
 
 class AFN(CtrDNNRecModel):
@@ -40,33 +40,30 @@ class AFN(CtrDNNRecModel):
     def __init__(self,
                  feature_columns,
                  ltl_hidden_size=256, afn_dnn_hidden_units=(256, 128),
+                 dense_emb_dim=8, max_norm=None,
                  l2_reg_linear=0.00001, l2_reg_embedding=0.00001, l2_reg_dnn=0,
                  init_std=0.0001, seed=1024, dnn_dropout=0, dnn_activation='relu',
-                 task='binary', device='cpu', gpus=None, dtype=torch.float32):
+                 task='ltr', device='cpu', gpus=None, dtype=torch.float32):
 
-        super(AFN, self).__init__(feature_columns, l2_reg_linear=l2_reg_linear,
+        super(AFN, self).__init__(feature_columns, dense_emb_dim=dense_emb_dim, max_norm=max_norm, l2_reg_linear=l2_reg_linear,
                                   l2_reg_embedding=l2_reg_embedding, init_std=init_std, seed=seed, task=task,
                                   device=device, gpus=gpus, dtype=dtype)
+        field_num = len(feature_columns)
 
-        self.ltl = LogTransformLayer(len(self.em.embedding_dict), self.embedding_size, ltl_hidden_size)
-        self.afn_dnn = DNN(self.embedding_size * ltl_hidden_size, afn_dnn_hidden_units,
-                       activation=dnn_activation, l2_reg=l2_reg_dnn, dropout_rate=dnn_dropout, use_bn=True,
-                       init_std=init_std, device=device)
+        self.ltl = LogTransformLayer(field_num, dense_emb_dim, ltl_hidden_size)
+        self.afn_dnn = DNN(dense_emb_dim * ltl_hidden_size, afn_dnn_hidden_units,
+                        activation=dnn_activation, l2_reg=l2_reg_dnn,
+                        dropout_rate=dnn_dropout, use_bn=True, device=device)
         self.afn_dnn_linear = nn.Linear(afn_dnn_hidden_units[-1], 1)
         self.to(device)
     
     def forward(self, X):
-        #comment: not follow formula(3) in paper AFN
-        sparse_embedding_list, _ = self.input_from_feature_columns(X, self.dnn_feature_columns,
-                                                                   self.embedding_dict)
+        X = self.embedding_input(X)
 
         #comment: what if linear model is None ?
         logit = self.linear_model(X)
-        if len(sparse_embedding_list) == 0:
-            raise ValueError('Sparse embeddings not provided. AFN only accepts sparse embeddings as input.')
-            
-        afn_input = torch.cat(sparse_embedding_list, dim=1)
-        ltl_result = self.ltl(afn_input)
+
+        ltl_result = self.ltl(X)
         afn_logit = self.afn_dnn(ltl_result)
         afn_logit = self.afn_dnn_linear(afn_logit)
         
