@@ -1,2 +1,3 @@
 /datasets/
 /src/**/*.pyc
+/src/experiments/checkpoint/
