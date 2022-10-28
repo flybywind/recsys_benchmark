@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import Parameter
-from graph_recsys_benchmark.nn import KGCNConv
+from ..nn import KGCNConv
 from torch_geometric.nn.inits import glorot
 
 from .base import GraphRecsysModel

@@ -21,7 +21,7 @@ class BaseSolver(object):
     def generate_candidates(self, dataset, u_nid):
         """
         Return the recommendation candidates to the algorithms to rank
-        :param dataset: graph_recsys_benchmark.dataset.Dataset object
+        :param dataset: dataset.Dataset object
         :param u_nid: user node ids
         :return:
         """

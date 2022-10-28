@@ -59,7 +59,7 @@ class ShadowNN(nn.Module):
         self.activation = activation_layer(activate)
 
     def forward(self, X):
-        return self.activation(self.model(X))
+        return self.activation(self.model(X.flatten(1)))
 
 class LocalActivationUnit(nn.Module):
     """The LocalActivationUnit used in DIN with which the representation of
@@ -196,7 +196,7 @@ class PredictionLayer(nn.Module):
     """
 
     def __init__(self, task='binary', use_bias=True, **kwargs):
-        if task not in ["binary", "multiclass", "regression"]:
+        if task not in ["binary", "ltr", "regression"]:
             raise ValueError("task must be binary,multiclass or regression")
 
         super(PredictionLayer, self).__init__()
