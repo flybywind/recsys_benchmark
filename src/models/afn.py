@@ -71,3 +71,13 @@ class AFN(CtrDNNRecModel):
         y_pred = self.out(logit)
         
         return y_pred
+
+
+    def predict(self, unids, inids):
+        '''
+        predict base on user profiles vs id profiles
+        :param unids:
+        :param inids:
+        :return:
+        '''
+        return self.forward(torch.cat([unids, inids], dim=-1))

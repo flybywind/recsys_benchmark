@@ -1,9 +1,7 @@
 import argparse
 import torch
 import os
-import sys
 
-sys.path.append('..')
 from ..models import PEAGATRecsysModel
 from ..utils import get_folder_path, update_pea_graph_input
 from ..solvers import BaseSolver

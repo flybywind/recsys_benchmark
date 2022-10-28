@@ -71,29 +71,34 @@ class CtrDNNRecModel(nn.Module):
         # self._ckpt_saved_epoch = False  # used for EarlyStopping in tf1.14
         # self.history = History()
 
-    def evaluate(self, x, y, batch_size=256):
-        """
+    def loss(self, uid_profile, pos_iid_profile, neg_iid_profile):
+        '''
+        compute loss through collaborative filter loss
+        :param pos_neg_pair_t: composed of three parts, [ uid || pos_iid || neg_iid ]
+        :return:
+        '''
+        pos_pred = self.predict(uid_profile, pos_iid_profile)
+        neg_pred = self.predict(uid_profile, neg_iid_profile)
+        cf_loss = -(pos_pred - neg_pred).sigmoid().log().sum()
 
-        :param x: Numpy array of test data (if the model has a single input), or list of Numpy arrays (if the model has multiple inputs).
-        :param y: Numpy array of target (label) data (if the model has a single output), or list of Numpy arrays (if the model has multiple outputs).
-        :param batch_size: Integer or `None`. Number of samples per evaluation step. If unspecified, `batch_size` will default to 256.
-        :return: Dict contains metric names and metric values.
-        """
-        pred_ans = self.predict(x, batch_size)
-        eval_result = {}
-        for name, metric_fun in self.metrics.items():
-            eval_result[name] = metric_fun(y, pred_ans)
-        return eval_result
+        loss = cf_loss + self.get_regularization_loss()
+        return loss
 
-    def predict(self, x, batch_size=256):
-        """
+    def update_graph_input(self, dataset):
+        raise NotImplementedError
 
-        :param x: The input data, as a Numpy array (or list of Numpy arrays if the model has multiple inputs).
-        :param batch_size: Integer. If unspecified, it will default to 256.
-        :return: Numpy array(s) of predictions.
-        """
-        model = self.eval()
-        pass
+    def predict(self, unids, inids):
+        raise NotImplementedError
+
+    def eval(self, metapath_idx=None):
+        super(CtrDNNRecModel, self).eval()
+        if self.__class__.__name__ not in ['KGATRecsysModel', 'KGCNRecsysModel']:
+            if self.__class__.__name__[:3] == 'PEA':
+                with torch.no_grad():
+                    self.cached_repr = self.forward(metapath_idx)
+            else:
+                with torch.no_grad():
+                    self.cached_repr = self.forward()
 
     def add_regularization_weight(self, weight_list, l1=0.0, l2=0.0):
         # For a Parameter, put it in a list to keep Compatible with get_regularization_loss()
@@ -126,90 +131,6 @@ class CtrDNNRecModel(nn.Module):
     def add_auxiliary_loss(self, aux_loss, alpha):
         self.aux_loss = aux_loss * alpha
 
-    def compile(self, optimizer,
-                loss=None,
-                metrics=None,
-                ):
-        """
-        :param optimizer: String (name of optimizer) or optimizer instance. See [optimizers](https://pytorch.org/docs/stable/optim.html).
-        :param loss: String (name of objective function) or objective function. See [losses](https://pytorch.org/docs/stable/nn.functional.html#loss-functions).
-        :param metrics: List of metrics to be evaluated by the model during training and testing. Typically you will use `metrics=['accuracy']`.
-        """
-        self.metrics_names = ["loss"]
-        self.optim = self._get_optim(optimizer)
-        self.loss_func = self._get_loss_func(loss)
-        self.metrics = self._get_metrics(metrics)
-
-    def _get_optim(self, optimizer):
-        if isinstance(optimizer, str):
-            if optimizer == "sgd":
-                optim = torch.optim.SGD(self.parameters(), lr=0.01)
-            elif optimizer == "adam":
-                optim = torch.optim.Adam(self.parameters())  # 0.001
-            elif optimizer == "adagrad":
-                optim = torch.optim.Adagrad(self.parameters())  # 0.01
-            elif optimizer == "rmsprop":
-                optim = torch.optim.RMSprop(self.parameters())
-            else:
-                raise NotImplementedError
-        else:
-            optim = optimizer
-        return optim
-
-    def _get_loss_func(self, loss):
-        if isinstance(loss, str):
-            loss_func = self._get_loss_func_single(loss)
-        elif isinstance(loss, list):
-            loss_func = [self._get_loss_func_single(loss_single) for loss_single in loss]
-        else:
-            loss_func = loss
-        return loss_func
-
-    def _get_loss_func_single(self, loss):
-        if loss == "binary_crossentropy":
-            loss_func = F.binary_cross_entropy
-        elif loss == "mse":
-            loss_func = F.mse_loss
-        elif loss == "mae":
-            loss_func = F.l1_loss
-        else:
-            raise NotImplementedError
-        return loss_func
-
-    def _log_loss(self, y_true, y_pred, eps=1e-7, normalize=True, sample_weight=None, labels=None):
-        # change eps to improve calculation accuracy
-        return log_loss(y_true,
-                        y_pred,
-                        eps,
-                        normalize,
-                        sample_weight,
-                        labels)
-
-    @staticmethod
-    def _accuracy_score(y_true, y_pred):
-        return accuracy_score(y_true, np.where(y_pred > 0.5, 1, 0))
-
-    def _get_metrics(self, metrics, set_eps=False):
-        metrics_ = {}
-        if metrics:
-            for metric in metrics:
-                if metric == "binary_crossentropy" or metric == "logloss":
-                    if set_eps:
-                        metrics_[metric] = self._log_loss
-                    else:
-                        metrics_[metric] = log_loss
-                if metric == "auc":
-                    metrics_[metric] = roc_auc_score
-                if metric == "mse":
-                    metrics_[metric] = mean_squared_error
-                if metric == "accuracy" or metric == "acc":
-                    metrics_[metric] = self._accuracy_score
-                self.metrics_names.append(metric)
-        return metrics_
-
-    def _in_multi_worker_mode(self):
-        # used for EarlyStopping in tf1.15
-        return None
 
     @property
     def embedding_size(self):

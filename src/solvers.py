@@ -52,6 +52,12 @@ class BaseSolver(object):
             dataset.test_pos_unid_inid_map, dataset.neg_unid_inid_map
 
         u_nids = list(test_pos_unid_inid_map.keys())
+
+        #todo: add these two attr in dataset for CTR model
+        if self.model_args['model_type'] == 'CTR':
+            unid_profile_map = dataset.unid_profile_map
+            inid_profile_map = dataset.inid_profile_map
+
         test_bar = tqdm.tqdm(u_nids, total=len(u_nids))
         for u_idx, u_nid in enumerate(test_bar):
             pos_i_nids, neg_i_nids = self.generate_candidates(
@@ -82,8 +88,17 @@ class BaseSolver(object):
                 neg_u_nids_t -= dataset.e2nid_dict['uid'][0]
                 pos_i_nids_t -= dataset.e2nid_dict['iid'][0]
                 neg_i_nids_t -= dataset.e2nid_dict['iid'][0]
-            pos_pred = model.predict(pos_u_nids_t, pos_i_nids_t).reshape(-1)
-            neg_pred = model.predict(neg_u_nids_t, neg_i_nids_t).reshape(-1)
+
+            if self.model_args['model_type'] == 'CTR':
+                unid_profile_t = torch.from_numpy(unid_profile_map[u_nid, :]).repeat([len(pos_i_nids), 1]).to(self.train_args['device'])
+                inid_profile_t = torch.from_numpy(inid_profile_map[pos_i_nids-dataset.type_accs['iid'], :]).to(self.train_args['device'])
+                pos_pred = model.predict(unid_profile_t, inid_profile_t).reshape(-1)
+                neg_unid_profile_t = torch.from_numpy(unid_profile_map[u_nid, :]).repeat([len(neg_i_nids), 1]).to(self.train_args['device'])
+                neg_inid_profile_t = torch.from_numpy(inid_profile_map[neg_i_nids-dataset.type_accs['iid'], :]).to(self.train_args['device'])
+                neg_pred = model.predict(neg_unid_profile_t, neg_inid_profile_t).reshape(-1)
+            else:
+                pos_pred = model.predict(pos_u_nids_t, pos_i_nids_t).reshape(-1)
+                neg_pred = model.predict(neg_u_nids_t, neg_i_nids_t).reshape(-1)
 
             _, indices = torch.sort(torch.cat([pos_pred, neg_pred]), descending=True)
             hit_vec = (indices < len(pos_i_nids)).cpu().detach().numpy()
