@@ -7,8 +7,8 @@ from torch.nn import Parameter
 
 from torch_geometric.nn.inits import glorot, zeros
 
-from ..nn import PredictionLayer, ShadowNN, EmbeddingAll
-from ..utils import build_input_features, create_embedding_matrix
+from nn import PredictionLayer, ShadowNN, EmbeddingAll
+from utils import build_input_features, create_embedding_matrix
 
 
 class BaseRecsysModel(torch.nn.Module):
@@ -33,7 +33,7 @@ class BaseRecsysModel(torch.nn.Module):
 
 
 class CtrDNNRecModel(nn.Module):
-    def __init__(self, feature_columns, dense_emb_dim=8, max_norm=None, l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
+    def __init__(self, feature_columns, dense_emb_dim=8, max_norm=None, l2_reg_embedding=1e-5,
                  init_std=0.0001, seed=1024, task='ltr', device='cpu', dtype=torch.float32, gpus=None):
 
         super(CtrDNNRecModel, self).__init__()
@@ -54,14 +54,14 @@ class CtrDNNRecModel(nn.Module):
                                             max_norm=max_norm, dtype=dtype, device=device)
 
         # Create embedding matrics and the weights for shallow linear side
-        self.linear_model = ShadowNN(
-            self.embedding_size, device=device)
+        # self.linear_model = ShadowNN(
+        #     self.embedding_size, device=device)
 
         self.regularization_weight = []
 
         self.add_regularization_weight(self.embedding_input.dense_embedding_dict.parameters(), l2=l2_reg_embedding)
         self.add_regularization_weight(self.embedding_input.sparse_embedding_dict.parameters(), l2=l2_reg_embedding)
-        self.add_regularization_weight(self.linear_model.parameters(), l2=l2_reg_linear)
+        # self.add_regularization_weight(self.linear_model.parameters(), l2=l2_reg_shadow)
 
         self.out = PredictionLayer(task)
         self.to(device)

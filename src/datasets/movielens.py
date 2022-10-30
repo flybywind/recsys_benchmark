@@ -9,9 +9,9 @@ from collections import Counter
 import tqdm
 import pickle
 
-from .dataset import Dataset
+from dataset import Dataset
 from torch_geometric.data import download_url, extract_zip
-from ..parser import parse_ml25m, parse_mlsmall
+from parser import parse_ml25m, parse_mlsmall
 
 
 def save_df(df, path):

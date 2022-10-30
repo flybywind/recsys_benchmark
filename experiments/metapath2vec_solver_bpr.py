@@ -8,13 +8,13 @@ import time
 import inspect
 import sys
 
-sys.path.append('..')
-from ..models import MetaPath2Vec
+sys.path.append('../src')
+from models import MetaPath2Vec
 from torch.utils.data import DataLoader
 
-from ..models import WalkBasedRecsysModel
-from ..utils import *
-from ..solvers import BaseSolver
+from models import WalkBasedRecsysModel
+from utils import *
+from solvers import BaseSolver
 
 MODEL_TYPE = 'Walk'
 LOSS_TYPE = 'BPR'

@@ -8,17 +8,17 @@ import time
 import tqdm
 import sys
 
-sys.path.append('..')
+sys.path.append('../src')
 from torch.utils.data import DataLoader
 from torch_geometric.utils import softmax
-from ..models import KGATRecsysModel
-from ..solvers import BaseSolver
-from ..utils import *
+from models import KGCNRecsysModel
+from solvers import BaseSolver
+from utils import *
 
 MODEL_TYPE = 'Graph'
 KG_LOSS_TYPE = 'BPR'
 CF_LOSS_TYPE = 'BPR'
-MODEL = 'KGAT'
+MODEL = 'KGCN'
 GRAPH_TYPE = 'hete'
 
 parser = argparse.ArgumentParser()
@@ -52,7 +52,7 @@ parser.add_argument('--lr', type=float, default=0.001, help='')
 parser.add_argument('--weight_decay', type=float, default=0.001, help='')
 parser.add_argument('--early_stopping', type=int, default=20, help='')
 parser.add_argument('--save_epochs', type=str, default='5,10,15,20,25', help='')
-parser.add_argument('--save_every_epoch', type=int, default=26, help='')         #26(for MovieLens), 16(only for Yelp)
+parser.add_argument('--save_every_epoch', type=int, default=26, help='')       #26(for MovieLens), 16(only for Yelp)
 
 args = parser.parse_args()
 
@@ -97,7 +97,7 @@ print('task params: {}'.format(model_args))
 print('train params: {}'.format(train_args))
 
 
-class KGATRecsysModel(KGATRecsysModel):
+class KGCNRecsysModel(KGCNRecsysModel):
     def loss(self, batch, att_map):
         if self.training:
             self.cached_repr = self.forward(att_map)
@@ -140,9 +140,9 @@ class KGATRecsysModel(KGATRecsysModel):
         return edge_index, edge_attr
 
 
-class KGATSolver(BaseSolver):
+class KGCNSolver(BaseSolver):
     def __init__(self, model_class, dataset_args, model_args, train_args):
-        super(KGATSolver, self).__init__(model_class, dataset_args, model_args, train_args)
+        super(KGCNSolver, self).__init__(model_class, dataset_args, model_args, train_args)
 
     def generate_candidates(self, dataset, u_nid):
         pos_i_nids = dataset.test_pos_unid_inid_map[u_nid]
@@ -315,8 +315,7 @@ class KGATSolver(BaseSolver):
                                 signs[signs == 0] = 1
                                 abs_val = torch.abs(model.edge_attr[:, 0])
                                 trans_vec = model.r[abs_val] * signs.view(-1, 1)
-                                alpha = torch.mm(model.x[model.edge_index[1]], model.proj_mat) * torch.tanh(torch.mm(model.x[model.edge_index[0]], model.proj_mat) + trans_vec)
-                                alpha = alpha.sum(-1).detach()
+                                alpha = torch.sum(model.x[model.edge_index[1]] * trans_vec, dim=-1)
                                 att_map = softmax(alpha, model.edge_index[1], dataset.num_nodes)
 
                             # Train CF part
@@ -478,5 +477,5 @@ class KGATSolver(BaseSolver):
 
 
 if __name__ == '__main__':
-    solver = KGATSolver(KGATRecsysModel, dataset_args, model_args, train_args)
+    solver = KGCNSolver(KGCNRecsysModel, dataset_args, model_args, train_args)
     solver.run()

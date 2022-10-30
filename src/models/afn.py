@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 
 from .base import CtrDNNRecModel
-from ..nn import LogTransformLayer, DNN
+from nn import LogTransformLayer, DNN, ShadowNN
 
 
 class AFN(CtrDNNRecModel):
@@ -23,7 +23,7 @@ class AFN(CtrDNNRecModel):
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
     :param ltl_hidden_size: integer, the number of logarithmic neurons in AFN
     :param afn_dnn_hidden_units: list, list of positive integer or empty list, the layer number and units in each layer of DNN layers in AFN
-    :param l2_reg_linear: float. L2 regularizer strength applied to linear part
+    :param l2_reg_shadow: float. L2 regularizer strength applied to linear part
     :param l2_reg_embedding: float. L2 regularizer strength applied to embedding vector
     :param l2_reg_dnn: float. L2 regularizer strength applied to DNN
     :param init_std: float,to use as the initialize std of embedding vector
@@ -41,33 +41,39 @@ class AFN(CtrDNNRecModel):
                  feature_columns,
                  ltl_hidden_size=256, afn_dnn_hidden_units=(256, 128),
                  dense_emb_dim=8, max_norm=None,
-                 l2_reg_linear=0.00001, l2_reg_embedding=0.00001, l2_reg_dnn=0,
-                 init_std=0.0001, seed=1024, dnn_dropout=0, dnn_activation='relu',
+                 l2_reg_embedding=0.00001, l2_reg_dnn=0, l2_reg_shadow=None,
+                 init_std=0.0001, seed=1024, dnn_dropout=0, activation='relu',
                  task='ltr', device='cpu', gpus=None, dtype=torch.float32):
 
-        super(AFN, self).__init__(feature_columns, dense_emb_dim=dense_emb_dim, max_norm=max_norm, l2_reg_linear=l2_reg_linear,
+        super(AFN, self).__init__(feature_columns, dense_emb_dim=dense_emb_dim, max_norm=max_norm,
                                   l2_reg_embedding=l2_reg_embedding, init_std=init_std, seed=seed, task=task,
                                   device=device, gpus=gpus, dtype=dtype)
         field_num = len(feature_columns)
 
         self.ltl = LogTransformLayer(field_num, dense_emb_dim, ltl_hidden_size)
         self.afn_dnn = DNN(dense_emb_dim * ltl_hidden_size, afn_dnn_hidden_units,
-                        activation=dnn_activation, l2_reg=l2_reg_dnn,
-                        dropout_rate=dnn_dropout, use_bn=True, device=device)
+                        activation=activation, dropout_rate=dnn_dropout, use_bn=True, device=device)
         self.afn_dnn_linear = nn.Linear(afn_dnn_hidden_units[-1], 1)
+
+        self.shadow_attached = False
+        if l2_reg_shadow is not None:
+            self.shadow_nn = ShadowNN(self.embedding_size, activate=activation, device=device, dtype=dtype)
+            self.add_regularization_weight(self.shadow_nn.parameters(), l2=l2_reg_shadow)
+            self.shadow_attached = True
+
+        self.add_regularization_weight(list(self.afn_dnn.parameters()) + list(self.afn_dnn_linear.parameters()), l2=l2_reg_dnn)
         self.to(device)
     
     def forward(self, X):
         X = self.embedding_input(X)
 
-        #comment: what if linear model is None ?
-        logit = self.linear_model(X)
-
         ltl_result = self.ltl(X)
         afn_logit = self.afn_dnn(ltl_result)
-        afn_logit = self.afn_dnn_linear(afn_logit)
-        
-        logit += afn_logit
+        logit = self.afn_dnn_linear(afn_logit)
+
+        if self.shadow_attached:
+            logit += self.shadow_nn(X)
+
         y_pred = self.out(logit)
         
         return y_pred

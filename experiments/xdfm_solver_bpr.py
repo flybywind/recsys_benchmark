@@ -3,10 +3,10 @@ import torch
 import os
 import sys
 
-sys.path.append('..')
-from ..models import XDFMRecsysModel
-from ..utils import get_folder_path
-from ..solvers import BaseSolver
+sys.path.append('../src')
+from models import XDFMRecsysModel
+from utils import get_folder_path
+from solvers import BaseSolver
 
 MODEL_TYPE = 'MF'
 LOSS_TYPE = 'BCE'

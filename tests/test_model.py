@@ -12,3 +12,6 @@ class TestAFN(unittest.TestCase):
         Y = afn(X)
         print(Y)
         print(afn)
+        afn2 = AFN(feature_columns, ltl_hidden_size=16, afn_dnn_hidden_units=[8, 4], dense_emb_dim=4, task='binary', l2_reg_shadow=0.001)
+        Y2 = afn2(X)
+        print(Y2)

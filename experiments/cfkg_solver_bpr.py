@@ -7,11 +7,11 @@ import time
 import tqdm
 import sys
 
-sys.path.append('..')
+sys.path.append('../src')
 from torch.utils.data import DataLoader
-from ..models import CFKGRecsysModel
-from ..solvers import BaseSolver
-from ..utils import *
+from models import CFKGRecsysModel
+from solvers import BaseSolver
+from utils import *
 
 MODEL_TYPE = 'Graph'
 GRAPH_TYPE = 'hete'

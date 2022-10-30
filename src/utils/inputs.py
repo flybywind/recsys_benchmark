@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from ..nn.utils import concat_fun
+from nn.utils import concat_fun
 
 DEFAULT_GROUP_NAME = "default_group"
 

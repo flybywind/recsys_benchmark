@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from .activation import activation_layer
 
-from ..utils import SparseFeat, DenseFeat, create_embedding_matrix
+from utils import SparseFeat, DenseFeat, create_embedding_matrix
 
 
 class EmbeddingAll(nn.Module):
@@ -143,13 +143,11 @@ class DNN(nn.Module):
         - **seed**: A Python integer to use as random seed.
     """
 
-    def __init__(self, inputs_dim, hidden_units, activation='relu', l2_reg=0, dropout_rate=0, use_bn=False,
-                 dice_dim=3, seed=1024, device='cpu', dtype=torch.float32):
+    def __init__(self, inputs_dim, hidden_units, activation='relu', dropout_rate=0, use_bn=False,
+                 dice_dim=3,  device='cpu', dtype=torch.float32):
         super(DNN, self).__init__()
         self.dropout_rate = dropout_rate
         self.dropout = nn.Dropout(dropout_rate)
-        self.seed = seed
-        self.l2_reg = l2_reg
         self.use_bn = use_bn
         if len(hidden_units) == 0:
             raise ValueError("hidden_units is empty!!")

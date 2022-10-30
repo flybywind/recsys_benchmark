@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import Parameter
-from ..nn import NGCFConv
+from nn import NGCFConv
 from torch_geometric.nn.inits import glorot
 
 from .base import GraphRecsysModel

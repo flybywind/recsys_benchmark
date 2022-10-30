@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Parameter
-from ..nn import MultiGCCFConv, SumAggregatorConv
+from nn import MultiGCCFConv, SumAggregatorConv
 from torch_geometric.nn.inits import glorot
 
 from .base import GraphRecsysModel

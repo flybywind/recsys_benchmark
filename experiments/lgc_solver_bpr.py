@@ -4,10 +4,10 @@ import os
 import numpy as np
 import sys
 
-sys.path.append('..')
-from ..models import LGCRecsysModel
-from ..utils import get_folder_path
-from ..solvers import BaseSolver
+sys.path.append('../src')
+from models import LGCRecsysModel
+from utils import get_folder_path
+from solvers import BaseSolver
 
 MODEL_TYPE = 'Graph'
 LOSS_TYPE = 'BPR'

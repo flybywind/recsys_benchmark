@@ -7,7 +7,7 @@ import gc
 import pandas as pd
 import tqdm
 
-from ..datasets import MovieLens
+from datasets import MovieLens
 
 
 def get_folder_path(model, dataset, loss_type):
