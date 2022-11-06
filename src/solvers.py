@@ -18,6 +18,9 @@ class BaseSolver(object):
         self.model_args = model_args
         self.train_args = train_args
 
+        self.dataset_attr_check_list = {"type_accs", "num_uids", "num_iids", "num_nodes", "e2nid_dict", "nid2e_dict",
+                                        "test_pos_unid_inid_map", "test_pos_unid_inid_map", "neg_unid_inid_map"}
+
     def generate_candidates(self, dataset, u_nid):
         """
         Return the recommendation candidates to the algorithms to rank
@@ -128,6 +131,9 @@ class BaseSolver(object):
 
         # Create the dataset
         dataset = load_dataset(self.dataset_args)
+        dataset_valid = self.check_dataset(dataset)
+        if not dataset_valid:
+            raise ValueError("dataset not valid")
 
         logger_file_path = os.path.join(global_logger_path, 'logger_file.txt')
         with open(logger_file_path, 'a') as logger_file:
@@ -427,3 +433,10 @@ class BaseSolver(object):
                 )
             )
             instantwrite(logger_file)
+
+    def check_dataset(self, dataset) -> bool:
+        attr_list = self.dataset_attr_check_list
+        for a in attr_list:
+            if not hasattr(dataset, a):
+                return False
+        return True

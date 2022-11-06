@@ -54,7 +54,8 @@ parser.add_argument('--if_use_features', type=str, default='false', help='')
 parser.add_argument('--num_core', type=int, default=10, help='')
 parser.add_argument('--num_feat_core', type=int, default=10, help='')
 parser.add_argument('--sampling_strategy', type=str, default='random', help='') # unseen(for latest-small), random(for Yelp,25m)
-parser.add_argument('--entity_aware', type=str, default='false', help='')
+parser.add_argument('--entity_aware', type=convert_str_bool, default='false', help='')
+parser.add_argument('--append_all_entities', type=convert_str_bool, default='true', help='')
 
 # Model params
 parser.add_argument('--ltl_hidden_size', type=int, default=256, help='')
@@ -146,6 +147,11 @@ train_args = {
 print('dataset params: {}'.format(dataset_args))
 print('task params: {}'.format(model_args))
 print('train params: {}'.format(train_args))
+
+class AFNSolver(BaseSolver):
+    def __init__(self):
+        super(AFNSolver, self).__init__()
+        self.dataset_attr_check_list = self.dataset_attr_check_list.union({"unid_profile_map", "inid_profile_map"})
 
 if __name__ == '__main__':
     solver = BaseSolver(AFN, dataset_args, model_args, train_args)

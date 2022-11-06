@@ -613,6 +613,7 @@ class MovieLens(Dataset):
         self.num_feat_core = kwargs['num_feat_core']
 
         self.entity_aware = kwargs['entity_aware']
+        self.append_all_entities = kwargs['append_all_entities']
 
         self.num_negative_samples = kwargs['num_negative_samples']
         self.sampling_strategy = kwargs['sampling_strategy']
@@ -944,6 +945,7 @@ class MovieLens(Dataset):
                 u_nids = pos_edge_index_trans_np[:, 0]
                 p_bar = tqdm.tqdm(u_nids)
                 for u_nid in p_bar:
+                    # comment: meaning, every user will be attached with some test points, as well as some negative points
                     negative_inids = self.test_pos_unid_inid_map[u_nid] + self.neg_unid_inid_map[u_nid]
                     negative_inids = rd.choices(negative_inids, k=self.num_negative_samples)
                     negative_inids = np.array(negative_inids, dtype=np.long).reshape(-1, 1)
@@ -953,7 +955,7 @@ class MovieLens(Dataset):
                 raise NotImplementedError
             train_data_np = np.hstack([train_data_np, neg_inid_np])
 
-            if self.entity_aware and not hasattr(self, 'iid_feat_nids'):
+            if (self.entity_aware or self.append_all_entities) and not hasattr(self, 'iid_feat_nids'):
                 # add entity aware data to batches
                 movies = pd.read_csv(join(self.processed_dir, 'movies.csv'), sep=';').fillna('')
                 tagging = pd.read_csv(join(self.processed_dir, 'tagging.csv'), sep=';')
@@ -1175,6 +1177,44 @@ class MovieLens(Dataset):
 
             if self.entity_aware:
                 inid = train_data_t[1].cpu().detach().item()
+                feat_nids = self.iid_feat_nids[int(inid - self.type_accs['iid'])]
+
+                if len(feat_nids) == 0:
+                    pos_item_entity_nid = 0
+                    neg_item_entity_nid = 0
+                    item_entity_mask = 0
+                else:
+                    pos_item_entity_nid = rd.choice(feat_nids)
+                    entity_type = self.nid2e_dict[pos_item_entity_nid][0]
+                    lower_bound = self.type_accs.get(entity_type)
+                    upper_bound = lower_bound + getattr(self, 'num_' + entity_type + 's')
+                    neg_item_entity_nid = rd.choice(range(lower_bound, upper_bound)) # comment, 1. why not get all entities ? 2. why not use the real neg entities instead of sample one
+                    item_entity_mask = 1
+
+                uid = train_data_t[0].cpu().detach().item()
+                feat_nids = self.uid_feat_nids[int(uid - self.type_accs['uid'])]
+                if len(feat_nids) == 0:
+                    pos_user_entity_nid = 0
+                    neg_user_entity_nid = 0
+                    user_entity_mask = 0
+                else:
+                    pos_user_entity_nid = rd.choice(feat_nids)
+                    entity_type = self.nid2e_dict[pos_user_entity_nid][0]
+                    lower_bound = self.type_accs.get(entity_type)
+                    upper_bound = lower_bound + getattr(self, 'num_' + entity_type + 's')
+                    neg_user_entity_nid = rd.choice(range(lower_bound, upper_bound))
+                    user_entity_mask = 1
+
+                pos_neg_entities = torch.tensor(
+                    [pos_item_entity_nid, neg_item_entity_nid, item_entity_mask, pos_user_entity_nid,
+                     neg_user_entity_nid, user_entity_mask], dtype=torch.long)
+
+                train_data_t = torch.cat([train_data_t, pos_neg_entities], dim=-1)
+
+            # todo: to be implemented
+            if self.append_all_entities:
+                pos_inid = train_data_t[1].cpu().detach().item()
+                neg_inid = train_data_t[2].cpu().detach().item()
                 feat_nids = self.iid_feat_nids[int(inid - self.type_accs['iid'])]
 
                 if len(feat_nids) == 0:
