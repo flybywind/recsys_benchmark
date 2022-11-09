@@ -1,4 +1,5 @@
 import torch
+import math
 import random as rd
 from os.path import join
 from os.path import isfile
@@ -8,11 +9,11 @@ import itertools
 from collections import Counter
 import tqdm
 import pickle
-
-from dataset import Dataset
 from torch_geometric.data import download_url, extract_zip
 from parser import parse_ml25m, parse_mlsmall
 
+from .dataset import Dataset
+from .dataset import distr_perc, stat_feat_num
 
 def save_df(df, path):
     df.to_csv(path, sep=';', index=False)
@@ -955,7 +956,7 @@ class MovieLens(Dataset):
                 raise NotImplementedError
             train_data_np = np.hstack([train_data_np, neg_inid_np])
 
-            if (self.entity_aware or self.append_all_entities) and not hasattr(self, 'iid_feat_nids'):
+            if self.entity_aware and not hasattr(self, 'iid_feat_nids'):
                 # add entity aware data to batches
                 movies = pd.read_csv(join(self.processed_dir, 'movies.csv'), sep=';').fillna('')
                 tagging = pd.read_csv(join(self.processed_dir, 'tagging.csv'), sep=';')
@@ -1000,7 +1001,56 @@ class MovieLens(Dataset):
                         feat_nids += genome_tag_nids
                     iid_feat_nids.append(feat_nids)
                 self.iid_feat_nids = iid_feat_nids
+            if self.append_all_entities and not hasattr(self, 'iid_feat_nids'):
+                # add entity aware data to batches
+                movies = pd.read_csv(join(self.processed_dir, 'movies.csv'), sep=';').fillna('')
+                tagging = pd.read_csv(join(self.processed_dir, 'tagging.csv'), sep=';')
+                if self.name == '25m':
+                    genome_tagging = pd.read_csv(join(self.processed_dir, 'genome_tagging.csv'), sep=';')
 
+                # Build item entity
+                iid_feat_nids = []
+                iid_tid_distr = tagging.groupby('iid')['tid'].apply(list).apply(distr_perc)
+                uid_tid_distr = tagging.groupby('uid')['tid'].apply(list).apply(distr_perc)
+
+                pbar = tqdm.tqdm(self.unique_iids, total=len(self.unique_iids))
+                for iid in pbar:
+                    pbar.set_description('Sampling item entities...')
+
+                    feat_nids = []
+
+                    year_nid = self.e2nid_dict['year'][movies[movies.iid == iid]['year'].item()]
+                    feat_nids.append([year_nid])
+
+                    genre_nids = [self.e2nid_dict['genre'][genre] for genre in self.unique_genres if
+                                  movies[movies.iid == iid][genre].item()]
+                    feat_nids.append(genre_nids)
+                    try:
+                        actor_nids = [self.e2nid_dict['actor'][actor] for actor in
+                                      movies[movies.iid == iid]['actors'].item().split(',') if actor != '']
+                        feat_nids.append(actor_nids)
+
+                        director_nids = [self.e2nid_dict['director'][director] for director in
+                                         movies[movies.iid == iid]['directors'].item().split(',') if director != '']
+                        feat_nids.append(director_nids)
+
+                        writer_nids = [self.e2nid_dict['writer'][writer] for writer in
+                                       movies[movies.iid == iid]['writers'].item().split(',') if writer != '']
+                        feat_nids.append(writer_nids)
+                    except:
+                        # ignore actor/director/write features
+                        pass
+
+                    feat_nids.append(list(iid_tid_distr[iid].keys()) if iid in iid_tid_distr else [])
+                    feat_nids.append(list(iid_tid_distr[iid].values()) if iid in iid_tid_distr else [])
+                    if self.name == '25m':
+                        genome_tag_nids = [self.e2nid_dict['genome_tid'][genome_tid] for genome_tid in
+                                           genome_tagging[genome_tagging.iid == iid].genome_tid]
+                        feat_nids.append(genome_tag_nids)
+                    iid_feat_nids.append(feat_nids)
+
+                self.iid_feat_nids = iid_feat_nids
+                self.iid_feat_max_num = stat_feat_num(iid_feat_nids, 2)
                 # Build user entity
                 uid_feat_nids = []
                 pbar = tqdm.tqdm(self.unique_uids, total=len(self.unique_uids))
@@ -1008,10 +1058,12 @@ class MovieLens(Dataset):
                     pbar.set_description('Sampling user entities...')
                     feat_nids = []
 
-                    tag_nids = [self.e2nid_dict['tid'][tid] for tid in tagging[tagging.uid == uid].tid]
-                    feat_nids += tag_nids
+                    feat_nids.append(list(uid_tid_distr[uid].keys()) if uid in uid_tid_distr else [])
+                    feat_nids.append(list(uid_tid_distr[uid].values()) if uid in uid_tid_distr else [])
                     uid_feat_nids.append(feat_nids)
                 self.uid_feat_nids = uid_feat_nids
+                self.uid_feat_max_num = stat_feat_num(uid_feat_nids, 5)
+                # todo: save it to pkl file
         else:
             raise NotImplementedError
         train_data_t = torch.from_numpy(train_data_np).long()  # comment: userId, itemId_pos, itemId_neg(unseen, test_pos)
@@ -1172,7 +1224,6 @@ class MovieLens(Dataset):
         else:
             # dataset[0] == datset.__getitem__(0)
             idx = idx.to_list() if torch.is_tensor(idx) else idx
-
             train_data_t = self.train_data[idx]
 
             if self.entity_aware:
@@ -1213,39 +1264,55 @@ class MovieLens(Dataset):
 
             # todo: to be implemented
             if self.append_all_entities:
-                pos_inid = train_data_t[1].cpu().detach().item()
-                neg_inid = train_data_t[2].cpu().detach().item()
-                feat_nids = self.iid_feat_nids[int(inid - self.type_accs['iid'])]
+                feat_indx = int(inid - self.type_accs['iid'])
+                feat_nids = self.iid_feat_nids[feat_indx]
+                iid_feat_max_num = self.iid_feat_max_num
+                n = len(feat_nids)
+                assert n == len(iid_feat_max_num)
+                pos_item_entity_nid = []
+                neg_item_entity_nid = []
+                pos_item_entity_mask = []
+                neg_item_entity_mask = []
+                inid_neg = train_data_t[2].cpu().detach().item()
+                neg_feat_indx = int(inid_neg - self.type_accs['iid'])
+                neg_feat_nids = self.iid_feat_nids[neg_feat_indx]
+                assert n == len(neg_feat_nids)
+                for fi in range(n):
+                    fn = len(feat_nids[fi])
+                    if fn == 0:
+                        pos_item_entity_nid.append([0]*iid_feat_max_num[fi])
+                        pos_item_entity_mask.append([0]*iid_feat_max_num[fi])
+                    else:
+                        pos_item_entity_nid.append(rd.sample(feat_nids[fi], math.min(fn, iid_feat_max_num[fi])))
+                        pos_item_entity_mask = [1] * iid_feat_max_num[fi]
 
-                if len(feat_nids) == 0:
-                    pos_item_entity_nid = 0
-                    neg_item_entity_nid = 0
-                    item_entity_mask = 0
-                else:
-                    pos_item_entity_nid = rd.choice(feat_nids)
-                    entity_type = self.nid2e_dict[pos_item_entity_nid][0]
-                    lower_bound = self.type_accs.get(entity_type)
-                    upper_bound = lower_bound + getattr(self, 'num_' + entity_type + 's')
-                    neg_item_entity_nid = rd.choice(range(lower_bound, upper_bound)) # comment, 1. why not get all entities ? 2. why not use the real neg entities instead of sample one
-                    item_entity_mask = 1
+                    fn = len(neg_feat_nids[fi])
+                    if fn == 0:
+                        neg_item_entity_nid.append([0]*iid_feat_max_num[fi])
+                        neg_item_entity_mask.append([0]*iid_feat_max_num[fi])
+                    else:
+                        neg_item_entity_nid.append(rd.sample(neg_feat_nids [fi], math.min(fn, iid_feat_max_num[fi])))
+                        neg_item_entity_mask = [1] * iid_feat_max_num[fi]
 
                 uid = train_data_t[0].cpu().detach().item()
                 feat_nids = self.uid_feat_nids[int(uid - self.type_accs['uid'])]
-                if len(feat_nids) == 0:
-                    pos_user_entity_nid = 0
-                    neg_user_entity_nid = 0
-                    user_entity_mask = 0
-                else:
-                    pos_user_entity_nid = rd.choice(feat_nids)
-                    entity_type = self.nid2e_dict[pos_user_entity_nid][0]
-                    lower_bound = self.type_accs.get(entity_type)
-                    upper_bound = lower_bound + getattr(self, 'num_' + entity_type + 's')
-                    neg_user_entity_nid = rd.choice(range(lower_bound, upper_bound))
-                    user_entity_mask = 1
+                uid_feat_max_num = self.uid_feat_max_num
+                n = len(feat_nids)
+                assert n == len(uid_feat_max_num)
+                user_entity_nid = []
+                user_entity_mask = []
+                for fi in range(n):
+                    fn = len(feat_nids[fi])
+                    if fn == 0:
+                        user_entity_nid.append([0]*uid_feat_max_num[fi])
+                        user_entity_mask.append([0]*uid_feat_max_num[fi])
+                    else:
+                        user_entity_nid.append(rd.sample(feat_nids, math.min(fn, uid_feat_max_num[fi])))
+                        user_entity_mask = [1]*uid_feat_max_num[fi]
 
                 pos_neg_entities = torch.tensor(
-                    [pos_item_entity_nid, neg_item_entity_nid, item_entity_mask, pos_user_entity_nid,
-                     neg_user_entity_nid, user_entity_mask], dtype=torch.long)
+                    pos_item_entity_nid + neg_item_entity_nid + pos_item_entity_mask +
+                    neg_item_entity_mask + user_entity_nid + user_entity_mask, dtype=torch.long)
 
                 train_data_t = torch.cat([train_data_t, pos_neg_entities], dim=-1)
             return train_data_t

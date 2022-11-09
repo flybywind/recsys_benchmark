@@ -4,6 +4,9 @@ import os.path as osp
 import warnings
 import errno
 import re
+import math
+import pandas as pd
+from collections import Counter
 
 import torch.utils.data
 
@@ -27,6 +30,20 @@ def makedirs(path):
         if e.errno != errno.EEXIST and osp.isdir(path):
             raise e
 
+
+def distr_perc(ll):
+    d = Counter(ll)
+    total = sum(v for v in d.values())
+    return dict((k, v / float(total)) for k, v in d.items())
+
+
+def stat_feat_num(feat_nids, minv = 1):
+    feat_stat = []
+    for row in feat_nids:
+        feat_stat.append([len(x) for x in row])
+    feat_stat_df = pd.DataFrame(feat_stat).quantile([0.9], axis=0).iloc[0, :]
+    ret = [int(math.ceil(x))+1 for x in feat_stat_df.values]
+    return [v if v >= minv else minv for v in ret]
 
 def __repr__(obj):
     if obj is None:
